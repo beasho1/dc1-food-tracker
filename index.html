@@ -571,11 +571,35 @@ function saveState() {
 
 // ─── INIT ────────────────────────────────────────────────────────────────
 loadState();
+
+// ── ONE-TIME DATA RESCUE (v1.3) ──────────────────────────────────────────
+// On 3/24 evening, user navigated to 3/25 and logged food there by accident.
+// This moves that data back to 3/24 where it belongs, runs exactly once.
+(function rescueMisplacedData() {
+  if (state.log && !state.rescued_v13) {
+    const wrongSlot = '2026-03-25';
+    const rightSlot = '2026-03-24';
+    const wrongData = state.log[wrongSlot];
+    const rightData = state.log[rightSlot];
+    const wrongHasEntries = wrongData && Object.values(wrongData).some(arr => arr.length > 0);
+    const rightIsEmpty = !rightData || Object.values(rightData).every(arr => arr.length === 0);
+    if (wrongHasEntries && rightIsEmpty) {
+      state.log[rightSlot] = wrongData;
+      state.log[wrongSlot] = { Breakfast:[], Lunch:[], Dinner:[], Snack:[] };
+      state.rescued_v13 = true;
+      console.log('DC1 v1.3: Moved misplaced 3/25 entries → 3/24');
+    }
+  }
+})();
+// ─────────────────────────────────────────────────────────────────────────
+
+// Always reset to today on load — never carry over a navigated date across sessions
 state.date = todayStr();
 if (!state.log) state.log = {};
 if (!state.log[state.date]) {
   state.log[state.date] = { Breakfast:[], Lunch:[], Dinner:[], Snack:[] };
 }
+saveState();
 renderAll();
 filterFoods();
 
@@ -591,9 +615,15 @@ function renderAll() {
 function updateDateBtn() {
   const today = todayStr();
   const d = new Date(state.date + 'T12:00:00');
-  const label = state.date === today ? 'TODAY' :
+  const isToday = state.date === today;
+  const label = isToday ? 'TODAY' :
     d.toLocaleDateString('en-US', { month:'short', day:'numeric' }).toUpperCase();
-  document.getElementById('dateBtnTop').textContent = label;
+  const btn = document.getElementById('dateBtnTop');
+  btn.textContent = label;
+  // Visual indicator when not on today
+  btn.style.background = isToday ? 'rgba(255,255,255,0.1)' : 'rgba(196,154,40,0.35)';
+  btn.style.color = isToday ? 'var(--white)' : '#FFD97D';
+  btn.style.fontWeight = isToday ? '400' : '700';
 }
 
 function renderBudget() {
@@ -907,14 +937,28 @@ function showTab(name) {
 }
 
 function showDatePicker() {
-  const d = prompt('Enter date (YYYY-MM-DD):', state.date);
-  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-    state.date = d;
-    if (!state.log[state.date]) state.log[state.date] = {Breakfast:[],Lunch:[],Dinner:[],Snack:[]};
-    saveState();
-    renderAll();
-    showTab('log');
+  const today = todayStr();
+  // If viewing a past/future date, offer to jump back to today first
+  if (state.date !== today) {
+    const choice = confirm('Jump back to TODAY (' + today + ')?\n\nCancel to enter a specific date instead.');
+    if (choice) {
+      state.date = today;
+      if (!state.log[state.date]) state.log[state.date] = {Breakfast:[],Lunch:[],Dinner:[],Snack:[]};
+      saveState(); renderAll(); showTab('log'); return;
+    }
   }
+  const d = prompt('View date (YYYY-MM-DD):\nToday is ' + today, state.date);
+  if (!d) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { showToast('Invalid date format'); return; }
+  if (d > today) {
+    const ok = confirm('\u26a0\ufe0f ' + d + ' is in the future.\nLogging food there may cause confusion when that date arrives.\nContinue anyway?');
+    if (!ok) return;
+  }
+  state.date = d;
+  if (!state.log[state.date]) state.log[state.date] = {Breakfast:[],Lunch:[],Dinner:[],Snack:[]};
+  saveState();
+  renderAll();
+  showTab('log');
 }
 
 function goToDate(ds) {
