@@ -357,6 +357,70 @@
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
 
+  /* CALENDAR PICKER */
+  .cal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 200;
+    align-items: flex-end; backdrop-filter: blur(4px);
+  }
+  .cal-overlay.open { display: flex; }
+  .cal-sheet {
+    background: var(--white); border-radius: 20px 20px 0 0;
+    padding: 20px; width: 100%; max-width: 480px; margin: 0 auto;
+    animation: slideUp 0.25s ease;
+  }
+  .cal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .cal-title { font-size: 16px; font-weight: 800; color: var(--navy); }
+  .cal-close {
+    background: none; border: none; font-size: 22px; color: var(--gray);
+    cursor: pointer; padding: 0 4px; line-height: 1;
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+  .cal-dow {
+    text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+    color: var(--gray); padding: 4px 0; text-transform: uppercase;
+  }
+  .cal-day {
+    text-align: center; padding: 8px 2px; border-radius: 8px;
+    font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+    cursor: pointer; color: var(--text); transition: all 0.15s;
+    border: 1.5px solid transparent;
+  }
+  .cal-day:hover { background: var(--foam); border-color: var(--wave); }
+  .cal-day.today { background: var(--navy); color: var(--white); font-weight: 700; }
+  .cal-day.selected { border-color: var(--ocean); color: var(--ocean); font-weight: 700; }
+  .cal-day.has-data::after {
+    content: ''; display: block; width: 4px; height: 4px;
+    background: var(--ocean); border-radius: 50%; margin: 2px auto 0;
+  }
+  .cal-day.today.has-data::after { background: rgba(255,255,255,0.6); }
+  .cal-day.empty { cursor: default; color: #CCC; }
+  .cal-month-label {
+    grid-column: 1/-1; font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--gray); padding: 10px 0 4px;
+  }
+
+  /* RECENCY STRIP */
+  .recency-strip {
+    padding: 0 16px 8px;
+  }
+  .recency-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--gray); margin-bottom: 6px;
+  }
+  .recency-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .recency-chip {
+    background: var(--foam); border: 1.5px solid var(--wave);
+    border-radius: 20px; padding: 6px 12px;
+    font-size: 12px; font-weight: 600; color: var(--navy);
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    font-family: 'Syne', sans-serif;
+  }
+  .recency-chip:active { background: var(--ocean); color: var(--white); border-color: var(--ocean); }
+
   /* HISTORY */
   .history-item {
     background: var(--white); border-radius: 12px; padding: 14px;
@@ -377,7 +441,7 @@
 <div class="header">
   <div class="header-top">
     <div class="logo">DC<span>1</span> FUEL</div>
-    <button class="date-btn" id="dateBtnTop" onclick="showDatePicker()">TODAY</button>
+    <button class="date-btn" id="dateBtnTop" onclick="openCal()">TODAY</button>
   </div>
   <div class="budget-section">
     <div class="budget-row">
@@ -459,6 +523,10 @@
         <button class="filter-btn" data-cls="Drink" onclick="setFilter(this,'Drink')">Drink</button>
         <button class="filter-btn" data-cls="Exercise" onclick="setFilter(this,'Exercise')">Exercise</button>
       </div>
+      <div class="recency-strip" id="recencyStrip" style="display:none">
+        <div class="recency-label">Recent for <span id="recencyMealLabel">this meal</span></div>
+        <div class="recency-row" id="recencyRow"></div>
+      </div>
       <div class="results-list" id="resultsList"></div>
     </div>
   </div>
@@ -504,6 +572,17 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- CALENDAR DATE PICKER -->
+<div class="cal-overlay" id="calOverlay">
+  <div class="cal-sheet">
+    <div class="cal-header">
+      <div class="cal-title">Select Date</div>
+      <button class="cal-close" onclick="closeCal()">×</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
   </div>
 </div>
 
@@ -819,8 +898,122 @@ function setFilter(btn, cls) {
   filterFoods();
 }
 
+// ─── CALENDAR PICKER ─────────────────────────────────────────────────────
+function openCal() {
+  buildCal();
+  document.getElementById('calOverlay').classList.add('open');
+}
+
+function closeCal() {
+  document.getElementById('calOverlay').classList.remove('open');
+}
+
+function buildCal() {
+  const today = new Date(todayStr() + 'T12:00:00');
+  const grid = document.getElementById('calGrid');
+  let html = '';
+  const dows = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  // Show current month + 4 prior weeks worth — going back ~5 weeks from today
+  // Build from 5 weeks ago to today
+  const start = new Date(today);
+  start.setDate(start.getDate() - 34); // ~5 weeks back
+  // Rewind to Sunday
+  start.setDate(start.getDate() - start.getDay());
+
+  // Day-of-week headers
+  html += dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+  let cur = new Date(start);
+  let lastMonth = -1;
+  while (cur <= today) {
+    if (cur.getMonth() !== lastMonth) {
+      lastMonth = cur.getMonth();
+      const mLabel = cur.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+      html += `<div class="cal-month-label">${mLabel}</div>`;
+      // Pad to correct weekday if needed
+      const dow = cur.getDay();
+      for (let p = 0; p < dow; p++) html += `<div class="cal-day empty"></div>`;
+    }
+    const ds = cur.toISOString().slice(0,10);
+    const isToday = ds === todayStr();
+    const isSelected = ds === state.date;
+    const isFuture = ds > todayStr();
+    const dayLog = state.log[ds];
+    const hasData = dayLog && Object.values(dayLog).some(arr => arr.length > 0);
+    let cls = 'cal-day';
+    if (isFuture) { cls += ' empty'; }
+    else {
+      if (isToday) cls += ' today';
+      else if (isSelected) cls += ' selected';
+      if (hasData) cls += ' has-data';
+    }
+    const onclick = isFuture ? '' : `onclick="pickDate('${ds}')"`;
+    html += `<div class="${cls}" ${onclick}>${cur.getDate()}</div>`;
+    cur.setDate(cur.getDate() + 1);
+  }
+  grid.innerHTML = html;
+}
+
+function pickDate(ds) {
+  state.date = ds;
+  if (!state.log[state.date]) state.log[state.date] = {Breakfast:[],Lunch:[],Dinner:[],Snack:[]};
+  saveState();
+  renderAll();
+  showTab('log');
+  closeCal();
+}
+
+// Keep old showDatePicker as fallback (no longer called from UI)
+function showDatePicker() { openCal(); }
+
+// ─── RECENCY ─────────────────────────────────────────────────────────────
+function getRecentFoodsForMeal(meal) {
+  // Scan last 14 days of logs for this meal slot, tally frequency
+  const today = new Date(todayStr() + 'T12:00:00');
+  const counts = {};
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const ds = d.toISOString().slice(0,10);
+    const entries = state.log[ds]?.[meal] || [];
+    entries.forEach(e => {
+      if (e.class !== 'Exercise') {
+        counts[e.id] = (counts[e.id] || 0) + 1;
+      }
+    });
+  }
+  // Sort by recency count, take top 6
+  return Object.entries(counts)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([id]) => FOODS.find(f => f.id === parseInt(id)))
+    .filter(Boolean);
+}
+
+function renderRecencyStrip(meal) {
+  const recent = getRecentFoodsForMeal(meal);
+  const strip = document.getElementById('recencyStrip');
+  const row = document.getElementById('recencyRow');
+  const lbl = document.getElementById('recencyMealLabel');
+  if (recent.length === 0) { strip.style.display = 'none'; return; }
+  lbl.textContent = meal;
+  row.innerHTML = recent.map(f => {
+    const cal = f.cal < 0 ? `−${Math.abs(f.cal)}` : `+${f.cal}`;
+    return `<div class="recency-chip" onclick="openModal(${f.id})">${f.name} <span style="opacity:0.6;font-size:11px">${cal}</span></div>`;
+  }).join('');
+  strip.style.display = 'block';
+}
+
 function openSearchForMeal(meal) {
   selectedMeal = meal;
+  // Clear search input when jumping from meal group
+  document.getElementById('searchInput').value = '';
+  // Reset filter to All
+  currentFilter = 'All';
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn[data-cls="All"]').classList.add('active');
+  renderRecencyStrip(meal);
+  filterFoods();
   showTab('search');
 }
 
@@ -934,6 +1127,10 @@ function showTab(name) {
   const tabs = ['log','search','journal','history'];
   const idx = tabs.indexOf(name);
   document.querySelectorAll('.tab')[idx].classList.add('active');
+  // Hide recency strip if navigating to search directly (not via meal group button)
+  if (name === 'search' && !selectedMeal) {
+    document.getElementById('recencyStrip').style.display = 'none';
+  }
 }
 
 function showDatePicker() {
@@ -980,6 +1177,10 @@ function showToast(msg) {
 // Close modal on overlay click
 document.getElementById('modalOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
+});
+// Close calendar on overlay click
+document.getElementById('calOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeCal();
 });
 </script>
 </body>
