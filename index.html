@@ -137,15 +137,17 @@
   .meal-group-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 12px; background: var(--foam); border-radius: 10px;
-    margin-bottom: 4px; cursor: pointer;
+    margin-bottom: 4px; cursor: pointer; transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent; user-select: none;
   }
+  .meal-group-header:active { background: var(--wave); }
   .meal-group-name { font-size: 13px; font-weight: 700; color: var(--navy); }
   .meal-group-cal { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--ocean); }
   .meal-group-add {
     background: var(--ocean); color: var(--white); border: none;
     width: 24px; height: 24px; border-radius: 50%; font-size: 16px;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+    flex-shrink: 0; pointer-events: none;
   }
   .food-entry {
     display: flex; align-items: center; padding: 10px 12px;
@@ -422,6 +424,40 @@
   }
   .recency-chip:active { background: var(--ocean); color: var(--white); border-color: var(--ocean); }
 
+  /* BUILD PANEL */
+  .build-container { display: flex; flex-direction: column; }
+  .build-sticky { background: var(--light); padding: 12px 16px 0; flex-shrink: 0; }
+  .build-name-row { margin-bottom: 10px; }
+  .build-name-input {
+    width: 100%; padding: 10px 14px; border: 2px solid var(--ocean);
+    border-radius: 12px; font-family: 'Syne', sans-serif; font-size: 14px;
+    font-weight: 700; outline: none; color: var(--navy); background: var(--white);
+  }
+  .build-search-row { margin-bottom: 8px; }
+  .build-ingredients { padding-top: 8px; }
+  .build-ing-row {
+    display: flex; align-items: center; padding: 9px 16px;
+    background: var(--white); border-radius: 8px; margin: 0 16px 4px;
+    border-left: 3px solid var(--ocean);
+  }
+  .build-ing-info { flex: 1; min-width: 0; }
+  .build-ing-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .build-ing-meta { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--gray); }
+  .build-ing-qty { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-right: 8px; }
+  .build-qty-btn {
+    background: var(--foam); border: 1px solid var(--wave); color: var(--navy);
+    width: 26px; height: 26px; border-radius: 6px; font-size: 16px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .build-qty-num { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+    color: var(--navy); min-width: 28px; text-align: center; }
+  .build-ing-cal { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--ocean); margin-right: 8px; flex-shrink: 0; }
+  .build-totals { margin: 8px 16px; background: var(--foam); border-radius: 10px; padding: 10px 14px; }
+  .build-total-row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .build-total-label { font-size: 12px; color: var(--gray); }
+  .build-total-val { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; color: var(--navy); }
+
   /* SWIPE HINT */
   .header-top { touch-action: pan-y; }
   .food-entry { cursor: pointer; }
@@ -499,6 +535,7 @@
   <div class="tabs">
     <button class="tab active" onclick="showTab('log')">LOG</button>
     <button class="tab" onclick="showTab('search')">ADD FOOD</button>
+    <button class="tab" onclick="showTab('build')">BUILD</button>
     <button class="tab" onclick="showTab('journal')">JOURNAL</button>
     <button class="tab" onclick="showTab('history')">HISTORY</button>
   </div>
@@ -534,6 +571,58 @@
         </div>
       </div>
       <div class="results-list" id="resultsList"></div>
+    </div>
+  </div>
+
+  <!-- BUILD PANEL -->
+  <div class="panel" id="panel-build">
+    <div class="build-container">
+      <div class="build-sticky">
+        <div class="build-name-row">
+          <input class="build-name-input" id="buildName" type="text" placeholder="Recipe name e.g. Veggie Omelette" autocomplete="off">
+        </div>
+        <div class="build-search-row">
+          <div style="position:relative;flex:1">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="buildSearchInput" type="text"
+              placeholder="Search ingredients…" oninput="filterBuildFoods()" autocomplete="off">
+          </div>
+        </div>
+        <div class="results-list" id="buildResultsList" style="max-height:28vh"></div>
+      </div>
+      <div class="build-ingredients" id="buildIngredients">
+        <div class="section-title" style="padding:0 16px 8px">Ingredients added</div>
+        <div id="buildIngList"><div class="empty-meal">No ingredients yet — search above</div></div>
+        <div class="build-totals" id="buildTotals" style="display:none">
+          <div class="build-total-row">
+            <span class="build-total-label">Total calories</span>
+            <span class="build-total-val" id="buildTotalCal">0 kcal</span>
+          </div>
+          <div class="build-total-row">
+            <span class="build-total-label">Protein</span>
+            <span class="build-total-val" id="buildTotalProtein">0g</span>
+          </div>
+          <div class="build-total-row">
+            <span class="build-total-label">Fiber</span>
+            <span class="build-total-val" id="buildTotalFiber">0g</span>
+          </div>
+        </div>
+        <div style="padding:12px 16px 24px">
+          <div style="margin-bottom:8px">
+            <div class="settings-label" style="margin-bottom:4px">Servings this makes</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="qty-stepper">
+                <button class="qty-btn" onclick="stepBuildServings(-1)" type="button">−</button>
+                <input class="qty-input" type="number" id="buildServings" value="1" min="1" max="20" style="width:48px" oninput="renderBuildTotals()">
+                <button class="qty-btn" onclick="stepBuildServings(1)" type="button">+</button>
+              </div>
+              <span style="font-size:12px;color:var(--gray)">Per serving: <span id="buildPerServing">— kcal</span></span>
+            </div>
+          </div>
+          <button class="modal-confirm" onclick="saveCustomFood()" style="margin-top:4px">Save as Custom Food</button>
+          <button class="modal-cancel" onclick="clearBuild()">Clear all</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -680,6 +769,13 @@ function saveState() {
 // ─── INIT ────────────────────────────────────────────────────────────────
 loadState();
 
+// Restore custom foods into live FOODS array
+if (state.customFoods && state.customFoods.length > 0) {
+  state.customFoods.forEach(cf => {
+    if (!FOODS.find(f => f.id === cf.id)) FOODS.push(cf);
+  });
+}
+
 // ── ONE-TIME DATA RESCUE (v1.3) ──────────────────────────────────────────
 // On 3/24 evening, user navigated to 3/25 and logged food there by accident.
 // This moves that data back to 3/24 where it belongs, runs exactly once.
@@ -821,10 +917,10 @@ function renderMealGroups() {
 
     const icons = {Breakfast:'🌅',Lunch:'☀️',Dinner:'🌙',Snack:'🍎'};
     html += `<div class="meal-group">
-      <div class="meal-group-header">
+      <div class="meal-group-header" onclick="openSearchForMeal('${meal}')">
         <span class="meal-group-name">${icons[meal]} ${meal}</span>
         <span class="meal-group-cal">${Math.round(mealCal)} kcal</span>
-        <button class="meal-group-add" onclick="openSearchForMeal('${meal}')">+</button>
+        <button class="meal-group-add" tabindex="-1">+</button>
       </div>
       <div>${entryHtml}</div>
     </div>`;
@@ -1153,10 +1249,9 @@ function showTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
-  const tabs = ['log','search','journal','history'];
+  const tabs = ['log','search','build','journal','history'];
   const idx = tabs.indexOf(name);
   document.querySelectorAll('.tab')[idx].classList.add('active');
-  // Hide recency strip if navigating to search directly (not via meal group button)
   if (name === 'search' && !selectedMeal) {
     document.getElementById('recencyStrip').style.display = 'none';
   }
@@ -1247,6 +1342,163 @@ function confirmEdit() {
   closeEditModal();
   renderAll();
   showToast(`${editFood.name} updated`);
+}
+
+// ─── BUILD TAB ────────────────────────────────────────────────────────────
+let buildIngredients = []; // [{food, qty}]
+
+function filterBuildFoods() {
+  const q = (document.getElementById('buildSearchInput').value || '').toLowerCase();
+  if (!q) { document.getElementById('buildResultsList').innerHTML = ''; return; }
+  let filtered = FOODS.filter(f =>
+    f.class !== 'Exercise' && f.name.toLowerCase().includes(q)
+  ).sort((a,b) => {
+    const aE = a.name.toLowerCase().startsWith(q);
+    const bE = b.name.toLowerCase().startsWith(q);
+    if (aE && !bE) return -1; if (!aE && bE) return 1;
+    return b.freq - a.freq;
+  }).slice(0, 40);
+  document.getElementById('buildResultsList').innerHTML = filtered.map(f => {
+    const isDense = f.dense;
+    return `<div class="result-item ${isDense ? 'dense-item' : ''}" onclick="addBuildIngredient(${f.id})">
+      <div class="density-dot ${isDense ? 'density-warn' : 'density-ok'}"></div>
+      <div class="result-info">
+        <div class="result-name">${f.name}</div>
+        <div class="result-meta">${f.density} cal/g · ${f.serving}</div>
+      </div>
+      <div class="result-cal">${f.cal} kcal</div>
+      <button class="result-add" onclick="event.stopPropagation();addBuildIngredient(${f.id})">+</button>
+    </div>`;
+  }).join('') || '<div style="color:var(--gray);text-align:center;padding:20px;font-size:13px">No foods found</div>';
+}
+
+function addBuildIngredient(foodId) {
+  const food = FOODS.find(f => f.id === foodId);
+  if (!food) return;
+  const existing = buildIngredients.find(i => i.food.id === foodId);
+  if (existing) {
+    existing.qty = Math.round((existing.qty + 1) * 100) / 100;
+  } else {
+    buildIngredients.push({ food, qty: 1 });
+  }
+  document.getElementById('buildSearchInput').value = '';
+  document.getElementById('buildResultsList').innerHTML = '';
+  renderBuildIngredients();
+  showToast(food.name + ' added');
+}
+
+function stepBuildIngQty(idx, delta) {
+  const ing = buildIngredients[idx];
+  if (!ing) return;
+  const cur = ing.qty;
+  const step = cur < 2 ? 0.25 : cur < 5 ? 0.5 : 1;
+  let next = Math.round((cur + delta * step) * 100) / 100;
+  if (next <= 0) { buildIngredients.splice(idx, 1); }
+  else { ing.qty = Math.max(0.25, Math.min(20, next)); }
+  renderBuildIngredients();
+}
+
+function renderBuildIngredients() {
+  const list = document.getElementById('buildIngList');
+  if (buildIngredients.length === 0) {
+    list.innerHTML = '<div class="empty-meal">No ingredients yet — search above</div>';
+    document.getElementById('buildTotals').style.display = 'none';
+    return;
+  }
+  list.innerHTML = buildIngredients.map((ing, i) => {
+    const cal = Math.round(ing.food.cal * ing.qty);
+    const qtyLabel = ing.qty % 1 === 0 ? ing.qty : ing.qty.toFixed(2).replace(/\.?0+$/,'');
+    return `<div class="build-ing-row">
+      <div class="build-ing-info">
+        <div class="build-ing-name">${ing.food.name}</div>
+        <div class="build-ing-meta">${ing.food.serving} per serving</div>
+      </div>
+      <div class="build-ing-qty">
+        <button class="build-qty-btn" onclick="stepBuildIngQty(${i},-1)">−</button>
+        <div class="build-qty-num">×${qtyLabel}</div>
+        <button class="build-qty-btn" onclick="stepBuildIngQty(${i},1)">+</button>
+      </div>
+      <div class="build-ing-cal">+${cal}</div>
+      <button class="food-entry-del" onclick="buildIngredients.splice(${i},1);renderBuildIngredients()">×</button>
+    </div>`;
+  }).join('');
+  document.getElementById('buildTotals').style.display = 'block';
+  renderBuildTotals();
+}
+
+function renderBuildTotals() {
+  const servings = Math.max(1, parseInt(document.getElementById('buildServings').value) || 1);
+  let totalCal = 0, totalProtein = 0, totalFiber = 0;
+  buildIngredients.forEach(ing => {
+    totalCal     += ing.food.cal     * ing.qty;
+    totalProtein += (ing.food.protein || 0) * ing.qty;
+    totalFiber   += (ing.food.fiber  || 0) * ing.qty;
+  });
+  document.getElementById('buildTotalCal').textContent     = Math.round(totalCal) + ' kcal';
+  document.getElementById('buildTotalProtein').textContent = Math.round(totalProtein) + 'g';
+  document.getElementById('buildTotalFiber').textContent   = Math.round(totalFiber) + 'g';
+  document.getElementById('buildPerServing').textContent   = Math.round(totalCal / servings) + ' kcal';
+}
+
+function stepBuildServings(delta) {
+  const input = document.getElementById('buildServings');
+  const val = Math.max(1, Math.min(20, (parseInt(input.value) || 1) + delta));
+  input.value = val;
+  renderBuildTotals();
+}
+
+function saveCustomFood() {
+  const name = document.getElementById('buildName').value.trim();
+  if (!name) { showToast('Enter a recipe name first'); return; }
+  if (buildIngredients.length === 0) { showToast('Add at least one ingredient'); return; }
+  const servings = Math.max(1, parseInt(document.getElementById('buildServings').value) || 1);
+  let totalCal = 0, totalProtein = 0, totalFiber = 0, totalWater = 0;
+  buildIngredients.forEach(ing => {
+    totalCal     += ing.food.cal     * ing.qty;
+    totalProtein += (ing.food.protein || 0) * ing.qty;
+    totalFiber   += (ing.food.fiber  || 0) * ing.qty;
+    totalWater   += (ing.food.water  || 0) * ing.qty;
+  });
+  const calPerServing = Math.round(totalCal / servings);
+  // Estimate total grams for density calc (using water content as proxy)
+  const totalG = buildIngredients.reduce((s, ing) => {
+    const servingG = parseFloat(ing.food.serving) || 100;
+    return s + servingG * ing.qty;
+  }, 0);
+  const densityPerServing = totalG > 0 ? Math.round((totalCal / servings) / (totalG / servings) * 10) / 10 : 1.0;
+  const newId = 20000 + (state.customFoods || []).length;
+  const newFood = {
+    id: newId,
+    name,
+    usda: 'custom',
+    cal: calPerServing,
+    density: densityPerServing,
+    class: 'Protein',
+    serving: '1 serving',
+    fiber: Math.round(totalFiber / servings * 10) / 10,
+    protein: Math.round(totalProtein / servings * 10) / 10,
+    water: Math.round(totalWater / servings * 10) / 10,
+    dense: densityPerServing > 1.5,
+    freq: 0,
+    ingredients: buildIngredients.map(i => ({ id: i.food.id, name: i.food.name, qty: i.qty })),
+    servingsTotal: servings
+  };
+  if (!state.customFoods) state.customFoods = [];
+  state.customFoods.push(newFood);
+  FOODS.push(newFood);
+  saveState();
+  showToast(name + ' saved! Find it in Add Food search.');
+  clearBuild();
+  showTab('search');
+}
+
+function clearBuild() {
+  buildIngredients = [];
+  document.getElementById('buildName').value = '';
+  document.getElementById('buildSearchInput').value = '';
+  document.getElementById('buildResultsList').innerHTML = '';
+  document.getElementById('buildServings').value = 1;
+  renderBuildIngredients();
 }
 
 // ─── SWIPE TO CHANGE DATE ────────────────────────────────────────────────
