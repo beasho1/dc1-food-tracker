@@ -198,14 +198,16 @@
   .journal-entry {
     background: var(--white); border-radius: 10px; padding: 12px;
     margin-bottom: 8px; border-left: 3px solid var(--ocean);
-    animation: slideIn 0.2s ease;
+    animation: slideIn 0.2s ease; cursor: pointer; transition: background 0.15s;
   }
+  .journal-entry:active { background: var(--foam); }
   .journal-entry-date { font-family: 'DM Mono', monospace; font-size: 10px;
-    color: var(--gray); margin-bottom: 4px; }
+    color: var(--gray); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
   .journal-entry-rhr { font-family: 'DM Mono', monospace; font-size: 11px;
     background: var(--foam); padding: 2px 6px; border-radius: 6px;
     color: var(--navy); margin-left: 8px; }
   .journal-entry-text { font-size: 13px; color: var(--text); line-height: 1.4; }
+  .journal-edit-hint { font-size: 10px; color: var(--gray); opacity: 0.5; }
 
   /* SEARCH PANEL */
   .search-container { display: flex; flex-direction: column; height: calc(100vh - 280px); }
@@ -665,6 +667,12 @@
             <button class="settings-save" onclick="saveSettings()">Save Settings</button>
           </div>
         </div>
+        <div class="settings-card">
+          <div class="settings-title">Export Data</div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.5">Download your full meal log as CSV — open in Excel, Numbers, or Power BI.</div>
+          <button class="settings-save" onclick="exportCSV()" style="background:var(--ocean);margin-bottom:8px">⬇ Download Meal Log CSV</button>
+          <button class="settings-save" onclick="exportJSON()" style="background:var(--blue)">⬇ Download Full Backup JSON</button>
+        </div>
       </div>
     </div>
   </div>
@@ -722,6 +730,32 @@
     </div>
     <button class="modal-confirm" onclick="confirmEdit()">Update</button>
     <button class="modal-cancel" onclick="closeEditModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- JOURNAL EDIT MODAL -->
+<div class="modal-overlay" id="journalEditOverlay">
+  <div class="modal">
+    <div class="modal-title">Edit Journal Entry</div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;font-family:'DM Mono',monospace">DATE (YYYY-MM-DD)</div>
+      <input type="text" id="jeDate" placeholder="2026-03-25"
+        style="width:100%;padding:8px 12px;border:1.5px solid #E5EAF0;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;outline:none;color:var(--text)">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;font-family:'DM Mono',monospace">RHR (BPM, OPTIONAL)</div>
+      <input type="number" id="jeRhr" placeholder="bpm" min="35" max="120"
+        style="width:100%;padding:8px 12px;border:1.5px solid #E5EAF0;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;outline:none;color:var(--text)">
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;font-family:'DM Mono',monospace">ENTRY</div>
+      <textarea id="jeText" rows="5"
+        style="width:100%;padding:10px 12px;border:1.5px solid #E5EAF0;border-radius:10px;font-family:'Syne',sans-serif;font-size:13px;color:var(--text);resize:none;outline:none;background:var(--white)"
+        onfocus="this.style.borderColor='var(--ocean)'" onblur="this.style.borderColor='#E5EAF0'"></textarea>
+    </div>
+    <button class="modal-confirm" onclick="saveJournalEdit()">Save Changes</button>
+    <button class="modal-cancel" onclick="deleteJournalEntry()" style="color:var(--red)">Delete Entry</button>
+    <button class="modal-cancel" onclick="closeJournalEdit()">Cancel</button>
   </div>
 </div>
 
@@ -966,16 +1000,21 @@ function renderHistory() {
 }
 
 function renderJournal() {
-  const entries = (state.journal || []).slice().reverse().slice(0,15);
-  if (entries.length === 0) {
+  const all = state.journal || [];
+  if (all.length === 0) {
     document.getElementById('journalEntries').innerHTML =
       '<div style="color:var(--gray);font-size:13px;text-align:center;padding:20px">No entries yet. Log daily events, RHR spikes, surf sessions, how you feel.</div>';
     return;
   }
-  document.getElementById('journalEntries').innerHTML = entries.map(e => {
+  // Show last 15, newest first, preserving real index into state.journal
+  const indexed = all.map((e, i) => ({ e, i })).reverse().slice(0, 15);
+  document.getElementById('journalEntries').innerHTML = indexed.map(({ e, i }) => {
     const rhrHtml = e.rhr ? `<span class="journal-entry-rhr">RHR ${e.rhr} bpm</span>` : '';
-    return `<div class="journal-entry">
-      <div class="journal-entry-date">${e.date} ${e.time || ''}${rhrHtml}</div>
+    return `<div class="journal-entry" onclick="openJournalEdit(${i})">
+      <div class="journal-entry-date">
+        <span>${e.date} ${e.time || ''}${rhrHtml}</span>
+        <span class="journal-edit-hint">tap to edit</span>
+      </div>
       <div class="journal-entry-text">${e.text}</div>
     </div>`;
   }).join('');
@@ -1235,7 +1274,96 @@ function saveJournal() {
   showToast('Entry saved');
 }
 
-// ─── SETTINGS ─────────────────────────────────────────────────────────────
+// ─── JOURNAL EDIT ─────────────────────────────────────────────────────────
+let editingJournalIdx = null;
+
+function openJournalEdit(idx) {
+  const entry = (state.journal || [])[idx];
+  if (!entry) return;
+  editingJournalIdx = idx;
+  document.getElementById('jeDate').value = entry.date || '';
+  document.getElementById('jeRhr').value  = entry.rhr  || '';
+  document.getElementById('jeText').value = entry.text || '';
+  document.getElementById('journalEditOverlay').classList.add('open');
+}
+
+function closeJournalEdit() {
+  document.getElementById('journalEditOverlay').classList.remove('open');
+  editingJournalIdx = null;
+}
+
+function saveJournalEdit() {
+  if (editingJournalIdx === null) return;
+  const date = document.getElementById('jeDate').value.trim();
+  const text = document.getElementById('jeText').value.trim();
+  if (!text) { showToast('Entry cannot be empty'); return; }
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('Date must be YYYY-MM-DD'); return; }
+  state.journal[editingJournalIdx].text = text;
+  state.journal[editingJournalIdx].date = date || state.journal[editingJournalIdx].date;
+  state.journal[editingJournalIdx].rhr  = document.getElementById('jeRhr').value || null;
+  saveState();
+  closeJournalEdit();
+  renderJournal();
+  showToast('Entry updated');
+}
+
+function deleteJournalEntry() {
+  if (editingJournalIdx === null) return;
+  const ok = confirm('Delete this journal entry?');
+  if (!ok) return;
+  state.journal.splice(editingJournalIdx, 1);
+  saveState();
+  closeJournalEdit();
+  renderJournal();
+  showToast('Entry deleted');
+}
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['Date','Meal','Food','USDA','Category','Servings','Calories','Protein_g','Fiber_g','Density_cal_g','Dense','Serving_Size']];
+  Object.entries(state.log || {}).sort().forEach(([date, meals]) => {
+    Object.entries(meals).forEach(([meal, entries]) => {
+      entries.forEach(e => {
+        rows.push([
+          date, meal, '"' + e.name + '"', e.usda || '', e.class || '',
+          e.qty, Math.round(e.cal * e.qty),
+          Math.round((e.protein || 0) * e.qty * 10) / 10,
+          Math.round((e.fiber   || 0) * e.qty * 10) / 10,
+          e.density || '', e.dense ? 'Y' : 'N',
+          '"' + (e.serving || '') + '"'
+        ]);
+      });
+    });
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  downloadFile('dc1_meal_log.csv', csv, 'text/csv');
+  showToast('CSV downloaded');
+}
+
+function exportJSON() {
+  const data = {
+    exported: new Date().toISOString(),
+    version: '1.6',
+    budget: state.budget,
+    surfCal: state.surfCal,
+    log: state.log || {},
+    journal: state.journal || [],
+    customFoods: state.customFoods || []
+  };
+  downloadFile('dc1_backup.json', JSON.stringify(data, null, 2), 'application/json');
+  showToast('Backup JSON downloaded');
+}
+
+function downloadFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function saveSettings() {
   state.budget = parseInt(document.getElementById('budgetInput').value) || 2400;
   state.surfCal = parseInt(document.getElementById('surfInput').value) || 700;
@@ -1539,6 +1667,9 @@ document.getElementById('calOverlay').addEventListener('click', function(e) {
 });
 document.getElementById('editOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeEditModal();
+});
+document.getElementById('journalEditOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeJournalEdit();
 });
 </script>
 </body>
